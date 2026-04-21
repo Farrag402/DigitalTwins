@@ -4,6 +4,13 @@ import array as _array
 import wave as _wave
 from pathlib import Path
 
+# To install the required PyQt6 libraries for this code, run:
+# pip install PyQt6 PyQt6-Qt6 PyQt6-sip
+
+# For PyQt6 Multimedia support (QMediaPlayer, QAudioOutput), also install:
+# pip install PyQt6.QtMultimedia
+
+# Then, you can safely import:
 from PyQt6.QtCore import Qt, QUrl, QRectF, QPointF, QRect, QSize, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QShortcut, QPainter, QPen
 from PyQt6.QtWidgets import (
@@ -15,8 +22,12 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 _ROOT    = Path(__file__).resolve().parent.parent
-CSV_PATH = str(_ROOT / "Dataset" / "transcriptions.csv")
-WAV_DIR  = str(_ROOT / "Dataset" / "WAV")
+# Directory produced by pipeline.py:
+#   chunk_000.wav + chunk_000.txt
+#   chunk_001.wav + chunk_001.txt
+OUTPUT_DIR = str(_ROOT / "Preprocessing" / "Alla_output")
+# Optional review state persisted separately (stem, reviewed)
+REVIEW_STATE_CSV = str(Path(OUTPUT_DIR) / "review_state.csv")
 # ─────────────────────────────────────────────────────────────────────────────
 
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -264,47 +275,61 @@ class ReviewTool(QMainWindow):
         self.setWindowTitle("ASR Review Tool")
         self.resize(1200, 720)
 
-        self.csv_path = Path(CSV_PATH)
-        self.wav_dir  = Path(WAV_DIR)
+        self.output_dir = Path(OUTPUT_DIR)
+        self.review_state_csv = Path(REVIEW_STATE_CSV)
 
         self.data: dict[str, dict] = {}
         self.current_stem: str | None = None
         self._loading = False
 
-        self._load_csv()
+        self._load_output_dir()
         self._build_ui()
         self._build_player()
         self._populate_list()
         self._setup_shortcuts()
 
-    # ── CSV I/O ───────────────────────────────────────────────────────────────
+    # ── Output dir I/O (wav/txt pairs) ───────────────────────────────────────
 
-    def _load_csv(self):
-        if not self.csv_path.exists():
-            return
-        with open(self.csv_path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                stem = Path(row["filename"]).stem
-                self.data[stem] = {
-                    "filename":      row["filename"],
-                    "transcription": row.get("transcription", ""),
-                    "reviewed":      row.get("reviewed", "").lower() == "true",
-                    "dirty":         False,
-                }
+    def _load_output_dir(self):
+        self.data.clear()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def _save_csv(self):
-        rows = [
-            {
-                "filename":      d["filename"],
-                "transcription": d["transcription"],
-                "reviewed":      str(d["reviewed"]),
+        reviewed_map: dict[str, bool] = {}
+        if self.review_state_csv.exists():
+            with open(self.review_state_csv, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    reviewed_map[row.get("stem", "")] = row.get("reviewed", "").lower() == "true"
+
+        wav_files = sorted(self.output_dir.glob("*.wav"))
+        for wav_path in wav_files:
+            stem = wav_path.stem
+            txt_path = self.output_dir / f"{stem}.txt"
+            transcription = txt_path.read_text(encoding="utf-8") if txt_path.exists() else ""
+            self.data[stem] = {
+                "filename": wav_path.name,
+                "transcription": transcription,
+                "reviewed": reviewed_map.get(stem, False),
+                "dirty": False,
             }
-            for d in self.data.values()
+
+    def _save_review_state(self):
+        rows = [
+            {"stem": stem, "reviewed": str(d["reviewed"])}
+            for stem, d in sorted(self.data.items())
         ]
-        with open(self.csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["filename", "transcription", "reviewed"])
+        with open(self.review_state_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["stem", "reviewed"])
             writer.writeheader()
             writer.writerows(rows)
+
+    def _save_current_txt(self):
+        if self.current_stem is None:
+            return
+        d = self.data[self.current_stem]
+        txt_path = self.output_dir / f"{self.current_stem}.txt"
+        txt_path.write_text(d["transcription"], encoding="utf-8")
+        d["dirty"] = False
+        self._save_review_state()
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -446,12 +471,15 @@ class ReviewTool(QMainWindow):
 
     def _populate_list(self):
         self.file_list.clear()
-        wav_stems = {p.stem for p in self.wav_dir.glob("*.wav")} if self.wav_dir.exists() else set()
-        for stem in sorted(set(self.data.keys()) | wav_stems):
+        wav_stems = {p.stem for p in self.output_dir.glob("*.wav")} if self.output_dir.exists() else set()
+        for stem in sorted(wav_stems):
             if stem not in self.data:
+                txt_path = self.output_dir / f"{stem}.txt"
                 self.data[stem] = {
-                    "filename": stem + ".wav", "transcription": "",
-                    "reviewed": False, "dirty": False,
+                    "filename": stem + ".wav",
+                    "transcription": txt_path.read_text(encoding="utf-8") if txt_path.exists() else "",
+                    "reviewed": False,
+                    "dirty": False,
                 }
             item = QListWidgetItem(_short_label(stem))
             item.setData(Qt.ItemDataRole.UserRole, stem)
@@ -498,7 +526,7 @@ class ReviewTool(QMainWindow):
 
         self.player.stop()
         self.waveform.clear()
-        wav_path = self.wav_dir / (stem + ".wav")
+        wav_path = self.output_dir / (stem + ".wav")
         if wav_path.exists():
             self.player.setSource(QUrl.fromLocalFile(str(wav_path)))
             self.waveform.load_wav(str(wav_path))
@@ -529,8 +557,7 @@ class ReviewTool(QMainWindow):
     def _save_current(self):
         if self.current_stem is None:
             return
-        self.data[self.current_stem]["dirty"] = False
-        self._save_csv()
+        self._save_current_txt()
         self.save_btn.setEnabled(False)
         self._apply_editor_bg(False)
         self._refresh_item(self.current_stem)
@@ -540,8 +567,7 @@ class ReviewTool(QMainWindow):
             return
         d = self.data[self.current_stem]
         d["reviewed"] = True
-        d["dirty"]    = False
-        self._save_csv()
+        self._save_current_txt()
         self.save_btn.setEnabled(False)
         self._apply_editor_bg(False)
         self._refresh_item(self.current_stem)
@@ -591,7 +617,13 @@ class ReviewTool(QMainWindow):
             | QMessageBox.StandardButton.Cancel,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self._save_csv()
+            # Save all dirty transcripts to their .txt files.
+            for stem, d in self.data.items():
+                if d["dirty"]:
+                    txt_path = self.output_dir / f"{stem}.txt"
+                    txt_path.write_text(d["transcription"], encoding="utf-8")
+                    d["dirty"] = False
+            self._save_review_state()
             event.accept()
         elif reply == QMessageBox.StandardButton.No:
             event.accept()
