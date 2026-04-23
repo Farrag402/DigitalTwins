@@ -4,5 +4,6 @@ __pycache__
 *.pyc
 Preprocessing/Alla_output_final/
 utils/__pycache__/
-env/
-
+Input/
+Preprocessing/Output/
+.venv/

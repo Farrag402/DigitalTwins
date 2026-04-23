@@ -1,0 +1,17 @@
+# Core pipeline
+python-dotenv
+tqdm
+openai
+
+# Audio processing
+imageio-ffmpeg
+soundfile
+pyloudnorm
+DeepFilterNet
+
+# Forced alignment
+torch
+qwen-asr
+
+# Review tool
+PyQt6

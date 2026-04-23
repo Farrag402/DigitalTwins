@@ -1,7 +1,8 @@
 """
 OpenAI ASR transcription utilities.
 
-Expects mp3 input files, converts to wav bytes for the API.
+Supports both the transcription API (gpt-4o-transcribe, gpt-4o-mini-transcribe)
+and the chat completions audio API (gpt-4o-audio-preview).
 """
 
 import base64
@@ -14,14 +15,26 @@ from openai import OpenAI
 
 from .audio_converter import get_audio_bytes
 
-DEFAULT_MODEL = "gpt-4o-audio-preview"
+DEFAULT_MODEL = "gpt-4o-transcribe"
+
+# Used only by the chat completions path (gpt-4o-audio-preview)
+SYSTEM_PROMPT = (
+    "You are a verbatim transcription engine. "
+    "Your ONLY job is to output the exact words spoken in the audio, word for word. "
+    "Do NOT summarize, paraphrase, compress, correct, or translate anything. "
+    "Do NOT add any introduction, explanation, heading, or commentary. "
+    "Output ONLY the raw spoken text, nothing else."
+)
 
 DEFAULT_PROMPT = (
-    "Transcribe this audio exactly as spoken. "
     "The speaker uses Egyptian Arabic dialect mixed with English (code-switching). "
     "Preserve the dialect faithfully — do NOT convert to Modern Standard Arabic. "
-    "Keep any English words or phrases in English as the speaker says them. "
+    "Keep all English words and phrases exactly as the speaker says them."
+    "Do not translate or modify the text in any way. Output the transcription verbatim, exactly as spoken."
 )
+
+# Models that use client.audio.transcriptions.create() instead of chat completions
+_TRANSCRIPTION_API_MODELS = {"gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-mini-transcribe-2025-12-15"}
 
 _client: Optional[OpenAI] = None
 
@@ -43,9 +56,55 @@ def _get_client(api_key: Optional[str] = None) -> OpenAI:
     return _client
 
 
+def _transcribe_via_transcription_api(
+    client: OpenAI,
+    audio_path: Path,
+    prompt: str,
+    model: str,
+) -> str:
+    """Use client.audio.transcriptions.create() for gpt-4o-transcribe family."""
+    with open(audio_path, "rb") as f:
+        response = client.audio.transcriptions.create(
+            model=model,
+            file=f,
+            prompt=prompt,
+            response_format="json",
+        )
+    return response.text.strip()
+
+
+def _transcribe_via_chat_completions(
+    client: OpenAI,
+    audio_path: Path,
+    prompt: str,
+    system_prompt: str,
+    model: str,
+) -> str:
+    """Use client.chat.completions.create() for gpt-4o-audio-preview."""
+    wav_bytes = get_audio_bytes(audio_path, output_format="wav", sample_rate=16000, mono=True)
+    audio_b64 = base64.b64encode(wav_bytes).decode()
+
+    response = client.chat.completions.create(
+        model=model,
+        modalities=["text"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "wav"}},
+                    {"type": "text", "text": prompt},
+                ],
+            },
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+
 def transcribe_audio(
     audio_path: Path,
     prompt: str = DEFAULT_PROMPT,
+    system_prompt: str = SYSTEM_PROMPT,
     api_key: Optional[str] = None,
     model: str = DEFAULT_MODEL,
     retries: int = 3,
@@ -54,13 +113,15 @@ def transcribe_audio(
     """
     Transcribe an audio file using OpenAI's audio model.
 
-    Accepts mp3 or other audio formats, converts to wav bytes for the API.
+    Routes to the transcription API for gpt-4o-transcribe / gpt-4o-mini-transcribe,
+    or to chat completions for gpt-4o-audio-preview.
 
     Args:
-        audio_path: Path to input audio file (mp3 recommended)
-        prompt: Transcription prompt/instructions
+        audio_path: Path to input audio file
+        prompt: Dialect/style hint passed to the model
+        system_prompt: Verbatim-transcription directive (chat completions path only)
         api_key: OpenAI API key (falls back to OPENAI_API_KEY env var)
-        model: OpenAI model ID (default gpt-4o-audio-preview)
+        model: OpenAI model ID (default gpt-4o-transcribe)
         retries: Number of retry attempts on rate limiting
         delay_between_retries: Base delay in seconds between retries (multiplied by attempt)
 
@@ -78,29 +139,14 @@ def transcribe_audio(
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
     client = _get_client(api_key)
-
-    wav_bytes = get_audio_bytes(audio_path, output_format="wav", sample_rate=16000, mono=True)
-    audio_b64 = base64.b64encode(wav_bytes).decode()
+    use_transcription_api = model in _TRANSCRIPTION_API_MODELS
 
     for attempt in range(retries):
         try:
-            response = client.chat.completions.create(
-                model=model,
-                modalities=["text"],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_audio",
-                                "input_audio": {"data": audio_b64, "format": "wav"},
-                            },
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
-            )
-            return response.choices[0].message.content.strip()
+            if use_transcription_api:
+                return _transcribe_via_transcription_api(client, audio_path, prompt, model)
+            else:
+                return _transcribe_via_chat_completions(client, audio_path, prompt, system_prompt, model)
 
         except Exception as e:
             if "429" in str(e) and attempt < retries - 1:
