@@ -7,3 +7,8 @@ utils/__pycache__/
 Input/
 Preprocessing/Output/
 .venv/
+Preprocessing/.env/
+*.env
+training/lora1/
+Preprocessing/output.zip
+Preprocessing/output
