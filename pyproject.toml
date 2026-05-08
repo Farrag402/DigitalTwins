@@ -24,13 +24,30 @@ dependencies = [
     "soundfile>=0.13.1",
     "torchcodec",
     "huggingface-hub>=1.12.2",
+    "vllm[audio]>=0.20.1rc1.dev153",
+    "kagglehub>=1.0.1",
 ]
 
 [project.urls]
-Homepage="https://github.com/a710128/nanovllm-voxcpm"
+Homepage = "https://github.com/a710128/nanovllm-voxcpm"
 
 [tool.setuptools]
 license-files = ["LICENSE"]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+[[tool.uv.index]]
+name = "vllm-nightly"
+url = "https://wheels.vllm.ai/nightly/cu130"
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 
 [tool.setuptools_scm]
 # Derive the package version from git tags.
