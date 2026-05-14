@@ -63,7 +63,7 @@ The pipeline operates entirely asynchronously. Audio chunks are streamed from th
 
 Server metrics are gathered from endpoint instrumentation using **Prometheus** and visualized in **Grafana**. This provides deep observability into system usage, latency percentiles, WebSocket connection health, and GPU metrics for the RTX A6000.
 
-![Grafana Dashboard Screenshot Placeholder](https://via.placeholder.com/800x400?text=Grafana+Dashboard+Screenshot+Placeholder)
+
 
 ---
 
