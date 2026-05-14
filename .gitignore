@@ -7,3 +7,10 @@ utils/__pycache__/
 Input/
 Preprocessing/Output/
 .venv/
+copy_gem_clips.py
+import_custom_to_geddo.py
+enhance_gem_clips.py
+Kaggle Dataset/
+Preprocessing/append_kaggle_to_dataset.py
+dataset.zip
+frontend/.env

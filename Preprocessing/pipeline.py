@@ -40,6 +40,8 @@ from utils.transcriber import transcribe_and_save, DEFAULT_PROMPT
 from utils.forced_aligner import align_and_save
 from utils.rechunker import rechunk, save_review_csv, read_accepted, save_final_csv
 
+from normalize_labels import normalize_label
+
 
 # ── Stage 1 ───────────────────────────────────────────────────────────────────
 
@@ -234,6 +236,14 @@ def run_stage3(output_dir: Path) -> Path:
             f"No accepted clips found in {clips_csv}.\n"
             "Open the review tool, mark clips as accepted, then re-run Stage 3."
         )
+
+    normalized: list[tuple[str, str]] = []
+    for fn, tx in accepted:
+        ntx = normalize_label(tx)
+        if ntx != tx:
+            print(f"  {fn}:\n    {tx!r}\n    -> {ntx!r}")
+        normalized.append((fn, ntx))
+    accepted = normalized
 
     final_csv = output_dir / "transcriptions.csv"
     save_final_csv(accepted, final_csv)
