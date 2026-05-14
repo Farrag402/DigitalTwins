@@ -14,3 +14,10 @@ Kaggle Dataset/
 Preprocessing/append_kaggle_to_dataset.py
 dataset.zip
 frontend/.env
+Preprocessing/.env/
+*.env
+training/lora1/
+training/Dataset/
+Preprocessing/output.zip
+Preprocessing/output
+**/.env
