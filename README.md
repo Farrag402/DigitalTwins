@@ -43,7 +43,7 @@ The training step involves fine-tuning the **VoxCPM 2** model using LoRA configs
 
 ## Deployment
 
-The deployment setup is designed for low latency and full-duplex communication using WebSockets. Both the ASR and TTS backend servers are hosted on a single RTX A6000 on Thunder Compute.
+The deployment setup is designed for low latency and full-duplex communication using WebSockets.We modified the nanovLLM repository to support low-latency websocket streaming for both incoming audio and generated speech responses. Both the ASR and TTS backend servers are hosted on a single RTX A6000 on Thunder Compute.
 
 * **Qwen3 1.7b ASR** is served using **vLLM** for highly optimized transcription.
 * **VoxCPM 2** is deployed via a self-modified version of **nano-vllm** that supports WebSocket integration. This hosts the base model and the dynamically loaded trained LoRA weights.
