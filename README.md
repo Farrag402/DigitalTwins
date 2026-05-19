@@ -47,6 +47,8 @@ The deployment setup is designed for low latency and full-duplex communication u
 
 * **Qwen3 1.7b ASR** is served using **vLLM** for highly optimized transcription.
 * **VoxCPM 2** is deployed via a self-modified version of **nano-vllm** that supports WebSocket integration. This hosts the base model and the dynamically loaded trained LoRA weights.
+*  Client-side VAD for interrupt detection enabling full duplex interaction
+*  Frontend deployment is powered by Cloudflare Pages.
 
 ### Asynchronous Data Flow
 
