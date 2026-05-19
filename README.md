@@ -9,7 +9,9 @@ Welcome to the **Conversational Professor Clone** project! This repository conta
 - [Deployment](#deployment)
 - [Monitoring](#monitoring)
 - [Quickstart & Usage Guide](#quickstart--usage-guide)
+## Demo Video
 
+[![Demo Video](https://img.youtube.com/vi/w5h4kcRGPww/0.jpg)](https://youtu.be/w5h4kcRGPww)
 ## Pipeline Architecture Overview
 
 
